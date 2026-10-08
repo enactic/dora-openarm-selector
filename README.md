@@ -39,11 +39,35 @@ priority.
 
 ### Arguments
 
-| Argument               | Required | Description                                                  |
-| ---------------------- | -------- | ------------------------------------------------------------ |
-| `--sources vr,policy`  | Yes      | Comma-separated source names. Earlier ones have higher priority. |
+| Argument               | Environment variable | Required | Description                                                  |
+| ---------------------- | -------------------- | -------- | ------------------------------------------------------------ |
+| `--sources vr,policy`  | `SOURCES`            | Yes      | Comma-separated source names. Earlier ones have higher priority. |
 
-A source name must not contain `_`.
+A source name must not contain `_`. Each source must have at least one
+input. Inputs of sources that aren't in `--sources` are ignored. You
+can use it to select a source by an environment variable for `dora
+run` without changing wiring, because dora-rs expands environment
+variables in `env:` values:
+
+```yaml
+- id: arm-command-selector
+  path: dora-openarm-selector
+  env:
+    SOURCES: "${TELEOP_SOURCE:-ker}"
+  inputs:
+    ker_right: leader/follower_position_right
+    ker_left: leader/follower_position_left
+    webxr_right: ik/position_right
+    webxr_left: ik/position_left
+  outputs:
+    - right
+    - left
+```
+
+With this configuration, `TELEOP_SOURCE=webxr dora run ...` forwards
+only `webxr_*` inputs and `ker_*` inputs are ignored. `ker` is used
+when `TELEOP_SOURCE` isn't set. A misspelled `TELEOP_SOURCE` such as
+`webrx` is rejected at startup because `webrx` has no input.
 
 ### Inputs
 
@@ -53,7 +77,10 @@ A source name must not contain `_`.
 | `<source>_enabled`   | bool (length 1)  | `true` enables the source, `false` disables it.   |
 
 You can name channels freely such as `right` and `left`. The source of
-an input ID is the part before the first `_`. `enabled` is the channel
+an input ID is the part before the first `_`. An input ID whose source
+isn't in `--sources` is ignored, so a misspelled source in an input ID
+such as `polcy_right` isn't detected. The format of an ignored input ID
+is still checked, so `polcy_selected` is rejected. `enabled` is the channel
 for `<source>_enabled` input, so it isn't forwarded. `selected` can't be
 used as a channel name because it conflicts with `selected` output.
 
@@ -88,6 +115,41 @@ node doesn't send it.
    `<source>_<channel>` inputs of a source are closed, the source is
    never selected. Otherwise it would block lower-priority sources
    forever.
+
+## Example
+
+[`example/dataflow-mujoco.yaml`](example/dataflow-mujoco.yaml)
+teleoperates OpenArm in a [MuJoCo](https://mujoco.org/) simulation
+([dora-openarm-mujoco](https://github.com/enactic/dora-openarm-mujoco))
+with [KER](https://github.com/enactic/dora-openarm-ker) or
+[WebXR](https://github.com/enactic/dora-openarm-webxr). Both of them are
+always running, so you need a KER connected via USB and a TLS
+certificate for WebXR. `TELEOP_SOURCE` environment variable selects
+which one moves the arms.
+
+Generate a self-signed TLS certificate into `example/` with
+[`example/prepare_tls.sh`](example/prepare_tls.sh). Pass a host name
+that your VR device can resolve. See
+[dora-openarm-webxr's setup](https://github.com/enactic/dora-openarm-webxr#setup)
+for details.
+
+```bash
+example/prepare_tls.sh $(hostname).local
+```
+
+Then build and run the dataflow:
+
+```bash
+pip install dora-rs-cli
+dora build example/dataflow-mujoco.yaml
+# KER moves the arms. KER is the default.
+TELEOP_SOURCE=ker dora run example/dataflow-mujoco.yaml
+# WebXR moves the arms.
+TELEOP_SOURCE=webxr dora run example/dataflow-mujoco.yaml
+```
+
+To use WebXR, open `https://$(hostname).local:8443/` in the Web browser
+on your VR device and press the "Start" button.
 
 ## License
 

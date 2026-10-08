@@ -1,0 +1,95 @@
+# Copyright 2026 Enactic, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Teleoperate OpenArm in MuJoCo with KER or WebXR.
+#
+# Both KER and WebXR are always running. TELEOP_SOURCE environment
+# variable for `dora run` selects which one moves the arms:
+#
+#   TELEOP_SOURCE=ker dora run example/dataflow-mujoco.yaml
+#   TELEOP_SOURCE=webxr dora run example/dataflow-mujoco.yaml
+#
+# KER is used when TELEOP_SOURCE isn't set.
+
+nodes:
+  - id: leader
+    build: pip install dora-openarm-ker
+    path: dora-openarm-ker
+    inputs:
+      # 250Hz
+      tick: dora/timer/millis/4
+    outputs:
+      - follower_position_right
+      - follower_position_left
+      - metadata
+
+  - id: webxr
+    build: pip install dora-openarm-webxr
+    path: dora-openarm-webxr
+    env:
+      # Generate them by example/prepare_tls.sh.
+      TLS_CERTIFICATE_FILE: "server.crt"
+      TLS_KEY_FILE: "server.key"
+    inputs:
+      # 250Hz
+      tick: dora/timer/millis/4
+    outputs:
+      - pose_right
+      - trigger_right
+      - pose_left
+      - trigger_left
+
+  - id: ik
+    build: pip install dora-openarm-kinematics
+    path: dora-openarm-ik
+    args: >-
+      --mode bimanual --tick-hz 250
+      --max-iters 5 --damping 0.1
+      --posture-cost 0 --lm-damping 0.01 --limit-velocity
+    inputs:
+      target_right: webxr/pose_right
+      target_left: webxr/pose_left
+      trigger_right: webxr/trigger_right
+      trigger_left: webxr/trigger_left
+    outputs:
+      - position_right
+      - position_left
+      - status
+
+  - id: selector
+    build: pip install -e ..
+    path: dora-openarm-selector
+    env:
+      # Inputs of the other source are ignored.
+      SOURCES: "${TELEOP_SOURCE:-ker}"
+    inputs:
+      ker_right: leader/follower_position_right
+      ker_left: leader/follower_position_left
+      webxr_right: ik/position_right
+      webxr_left: ik/position_left
+    outputs:
+      - right
+      - left
+
+  - id: mujoco
+    build: pip install dora-openarm-mujoco
+    path: dora-openarm-mujoco
+    args: "--scene demo --keyframe home --enable-collision --ctrl --viewer"
+    # env:
+    #   DISPLAY: ":1" # needed when running headless with Xvfb
+    inputs:
+      move_position_right: selector/right
+      move_position_left: selector/left
+    outputs:
+      - status

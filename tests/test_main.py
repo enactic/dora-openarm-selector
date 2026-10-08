@@ -83,14 +83,36 @@ def test_invalid_sources(sources):
         main.Selector(sources, [])
 
 
+def test_source_without_input():
+    with pytest.raises(ValueError, match="source has no input: typo"):
+        main.Selector(["typo", "vr", "policy"], INPUT_IDS)
+
+
 def test_parse_sources():
     assert main.parse_sources("vr, policy ") == ["vr", "policy"]
 
 
-@pytest.mark.parametrize("input_id", ["unknown_right", "vr", "vr_", "vr_selected"])
+@pytest.mark.parametrize(
+    "input_id",
+    ["vr", "vr_", "vr_selected", "_right", "other", "other_", "other_selected"],
+)
 def test_invalid_input_id(input_id):
     with pytest.raises(ValueError):
-        main.Selector(["vr", "policy"], [input_id])
+        main.Selector(["vr", "policy"], ["policy_right", input_id])
+
+
+def test_ignore_other_sources(node, capsys):
+    selector = main.Selector(["policy"], INPUT_IDS)
+    assert selector.ignored_input_ids == ["vr_enabled", "vr_right", "vr_left"]
+    handler = main.SelectorNode(node, selector, OUTPUT_IDS)
+    handler.start()
+    handler.process_event(_input("vr_right", pa.array([1.0])))
+    handler.process_event(_input_closed("vr_left"))
+    handler.process_event(_input("policy_right", pa.array([2.0])))
+    assert node.values() == [("selected", ["policy"]), ("right", [2.0])]
+    assert capsys.readouterr().out == (
+        "ignore inputs of other sources: ['vr_enabled', 'vr_right', 'vr_left']\n"
+    )
 
 
 def test_channel_with_underscore(selector):
@@ -217,3 +239,10 @@ def test_error_event(node, handler, capsys):
     handler.process_event({"type": "ERROR", "error": "boom"})
     assert node.outputs == []
     assert capsys.readouterr().out == "dora-rs error: boom\n"
+
+
+def test_empty_sources_environment_variable(monkeypatch):
+    monkeypatch.setenv("SOURCES", "")
+    monkeypatch.setattr("sys.argv", ["dora-openarm-selector"])
+    with pytest.raises(SystemExit):
+        main.main()

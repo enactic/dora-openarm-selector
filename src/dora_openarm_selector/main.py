@@ -20,11 +20,14 @@ selected source is the highest-priority one among the enabled sources.
 
 Inputs are named ``<source>_<channel>`` and ``<source>_enabled``. A
 source that has no ``<source>_enabled`` input wired is always enabled.
+Inputs of sources that aren't given are ignored, so you can select
+sources without changing wiring.
 Values are forwarded as is, so this node depends on neither the robot
 nor the meaning of the values.
 """
 
 import argparse
+import os
 
 import dora
 import pyarrow as pa
@@ -41,11 +44,12 @@ class Selector:
         sources: Source names. The first one has the highest priority.
         input_ids: Input IDs of this node. A source without
             ``<source>_enabled`` in them is always enabled. A source
-            whose data inputs are all closed is never selected.
+            whose data inputs are all closed is never selected. Input
+            IDs of other sources are ignored.
 
     Raises:
-        ValueError: If a source name is invalid or an input ID doesn't
-            belong to any source.
+        ValueError: If a source name is invalid, a source has no input
+            or an input ID is invalid.
 
     """
 
@@ -63,12 +67,24 @@ class Selector:
         self.open_data_inputs = {source: set() for source in self.sources}
         # Parsing also rejects miswired input IDs at startup, not at
         # their first message.
+        wired_sources = set()
+        self.ignored_input_ids = []
         for input_id in input_ids:
-            source, channel = self.parse_input_id(input_id)
+            parsed = self.parse_input_id(input_id)
+            if parsed is None:
+                self.ignored_input_ids.append(input_id)
+                continue
+            source, channel = parsed
+            wired_sources.add(source)
             if channel == _ENABLED_CHANNEL:
                 self.enabled[source] = False
             else:
                 self.open_data_inputs[source].add(input_id)
+        # This rejects a misspelled source name such as one given by an
+        # environment variable.
+        for source in self.sources:
+            if source not in wired_sources:
+                raise ValueError(f"source has no input: {source}")
 
     @property
     def selected(self):
@@ -89,23 +105,25 @@ class Selector:
             input_id: Input ID such as ``vr_right``.
 
         Returns:
-            ``(source, channel)``.
+            ``(source, channel)`` or ``None`` if the input ID doesn't
+            belong to any source.
 
         Raises:
-            ValueError: If the input ID doesn't belong to any source or
-                its channel conflicts with the ``selected`` output.
+            ValueError: If the input ID has no source or channel or its
+                channel conflicts with the ``selected`` output. They're
+                checked even for input IDs of other sources, so miswiring
+                is rejected whichever sources are given.
 
         """
         source, _, channel = input_id.partition("_")
-        if source not in self.sources or not channel:
-            raise ValueError(
-                f"input ID must be <source>_<channel> "
-                f"with source in {self.sources}: {input_id}"
-            )
+        if not source or not channel:
+            raise ValueError(f"input ID must be <source>_<channel>: {input_id}")
         if channel == _SELECTED_OUTPUT:
             raise ValueError(
                 f"channel name '{_SELECTED_OUTPUT}' is reserved: {input_id}"
             )
+        if source not in self.sources:
+            return None
         return source, channel
 
     def set_enabled(self, source, enabled):
@@ -139,7 +157,10 @@ class Selector:
             ``True`` if the selected source has changed.
 
         """
-        source, channel = self.parse_input_id(input_id)
+        parsed = self.parse_input_id(input_id)
+        if parsed is None:
+            return False
+        source, channel = parsed
         previous = self.selected
         if channel == _ENABLED_CHANNEL:
             self.enabled[source] = False
@@ -185,7 +206,12 @@ class SelectorNode:
         self.has_selected_output = _SELECTED_OUTPUT in output_ids
 
     def start(self):
-        """Send the initial selection."""
+        """Report ignored inputs and send the initial selection."""
+        if self.selector.ignored_input_ids:
+            print(
+                f"ignore inputs of other sources: {self.selector.ignored_input_ids}",
+                flush=True,
+            )
         self._send_selected()
 
     def process_event(self, event):
@@ -203,7 +229,10 @@ class SelectorNode:
             print(f"dora-rs error: {event['error']}", flush=True)
 
     def _process_input(self, event):
-        source, channel = self.selector.parse_input_id(event["id"])
+        parsed = self.selector.parse_input_id(event["id"])
+        if parsed is None:
+            return
+        source, channel = parsed
         if channel == _ENABLED_CHANNEL:
             try:
                 enabled = _parse_enabled(event["value"])
@@ -240,8 +269,12 @@ def main():
     )
     parser.add_argument(
         "--sources",
-        required=True,
-        help="Comma-separated source names. Earlier ones have higher priority.",
+        default=os.environ.get("SOURCES"),
+        required=not os.environ.get("SOURCES"),
+        help=(
+            "Comma-separated source names. Earlier ones have higher priority. "
+            "The default is SOURCES environment variable."
+        ),
     )
     args = parser.parse_args()
 
