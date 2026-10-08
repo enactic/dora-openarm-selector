@@ -17,3 +17,9 @@
 /dist/
 __pycache__/
 uv.lock
+/example/*.crt
+/example/*.csr
+/example/*.key
+/example/*.srl
+/example/MUJOCO_LOG.TXT
+/example/out/
