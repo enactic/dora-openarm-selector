@@ -140,7 +140,7 @@ example/prepare_tls.sh $(hostname).local
 Then build and run the dataflow:
 
 ```bash
-pip install 'dora-rs-cli>=1.0.0'
+pip install dora-rs-cli
 dora build example/dataflow-mujoco.yaml
 # KER moves the arms. KER is the default.
 TELEOP_SOURCE=ker dora run example/dataflow-mujoco.yaml
