@@ -140,7 +140,7 @@ example/prepare_tls.sh $(hostname).local
 Then build and run the dataflow:
 
 ```bash
-pip install dora-rs-cli
+pip install 'dora-rs-cli>=1.0.1'
 dora build example/dataflow-mujoco.yaml
 # KER moves the arms. KER is the default.
 TELEOP_SOURCE=ker dora run example/dataflow-mujoco.yaml
@@ -176,6 +176,9 @@ dataflow that starts even when only one device is plugged in.
 | -------------------- | ------------------------------------------------------------------ |
 | `SELECTED`           | The name that the dataflow runs now such as `ker`.                 |
 | `RUN_WHEN`           | Comma-separated names to run the real node for such as `vr,webxr`. |
+
+Both are required. This node fails if either is empty, so a
+misspelled variable name doesn't silently leave every source standing by.
 
 - Selected: `SELECTED` is one of `RUN_WHEN`. This node execs the real
   node in the same process, so it behaves exactly as without this node.

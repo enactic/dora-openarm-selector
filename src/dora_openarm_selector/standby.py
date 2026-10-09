@@ -27,6 +27,8 @@ import sys
 
 import dora
 
+from .main import parse_sources
+
 
 def is_selected(selected, run_when):
     """Return whether a name is selected.
@@ -40,7 +42,7 @@ def is_selected(selected, run_when):
         ``True`` if ``selected`` is one of ``run_when``.
 
     """
-    return selected.strip() in {name.strip() for name in run_when.split(",")}
+    return selected.strip() in parse_sources(run_when)
 
 
 def main():
@@ -50,9 +52,18 @@ def main():
         sys.exit("usage: dora-openarm-standby <node> [args...]")
     selected = os.environ.get("SELECTED", "")
     run_when = os.environ.get("RUN_WHEN", "")
+    # Empty values are likely misconfiguration such as a misspelled
+    # variable name, so reject them instead of silently standing by.
+    if not selected.strip():
+        sys.exit("standby: SELECTED must not be empty")
+    if not run_when.strip():
+        sys.exit("standby: RUN_WHEN must not be empty")
     if is_selected(selected, run_when):
-        # Same process and environment, so dora sees the real node.
-        os.execvp(command[0], command)
+        try:
+            # Same process and environment, so dora sees the real node.
+            os.execvp(command[0], command)
+        except OSError as error:
+            sys.exit(f"standby: cannot run {command[0]}: {error}")
 
     node = dora.Node()
     print(

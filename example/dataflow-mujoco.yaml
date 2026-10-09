@@ -14,8 +14,9 @@
 
 # Teleoperate OpenArm in MuJoCo with KER or WebXR.
 #
-# Both KER and WebXR are always running. TELEOP_SOURCE environment
-# variable for `dora run` selects which one moves the arms:
+# TELEOP_SOURCE environment variable for `dora run` selects which one
+# moves the arms. Only the selected one runs. The other one stands by
+# by dora-openarm-standby, so its device doesn't need to be ready:
 #
 #   TELEOP_SOURCE=ker dora run example/dataflow-mujoco.yaml
 #   TELEOP_SOURCE=webxr dora run example/dataflow-mujoco.yaml
@@ -24,8 +25,12 @@
 
 nodes:
   - id: leader
-    build: pip install dora-openarm-ker
-    path: dora-openarm-ker
+    build: pip install -e .. dora-openarm-ker
+    path: dora-openarm-standby
+    args: dora-openarm-ker
+    env:
+      SELECTED: "${TELEOP_SOURCE:-ker}"
+      RUN_WHEN: ker
     inputs:
       # 250Hz
       tick: dora/timer/millis/4
@@ -35,9 +40,12 @@ nodes:
       - metadata
 
   - id: webxr
-    build: pip install dora-openarm-webxr
-    path: dora-openarm-webxr
+    build: pip install -e .. dora-openarm-webxr
+    path: dora-openarm-standby
+    args: dora-openarm-webxr
     env:
+      SELECTED: "${TELEOP_SOURCE:-ker}"
+      RUN_WHEN: webxr
       # Generate them by example/prepare_tls.sh.
       TLS_CERTIFICATE_FILE: "server.crt"
       TLS_KEY_FILE: "server.key"

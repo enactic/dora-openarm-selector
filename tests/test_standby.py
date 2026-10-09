@@ -59,6 +59,21 @@ def test_exec_when_selected(monkeypatch):
     )
 
 
+def test_exit_when_command_not_found(monkeypatch):
+    def execvp(file, args):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setenv("SELECTED", "ker")
+    monkeypatch.setenv("RUN_WHEN", "ker")
+    monkeypatch.setattr("sys.argv", ["dora-openarm-standby", "dora-openarm-kr"])
+    monkeypatch.setattr("os.execvp", execvp)
+    with pytest.raises(
+        SystemExit,
+        match="standby: cannot run dora-openarm-kr: .*No such file or directory",
+    ):
+        standby.main()
+
+
 def test_stand_by_when_not_selected(monkeypatch, capsys):
     events = [{"type": "INPUT", "id": "tick"}, {"type": "STOP"}, {"type": "INPUT"}]
     monkeypatch.setenv("SELECTED", "webxr")
@@ -77,4 +92,25 @@ def test_stand_by_when_not_selected(monkeypatch, capsys):
 def test_usage_without_command(monkeypatch):
     monkeypatch.setattr("sys.argv", ["dora-openarm-standby"])
     with pytest.raises(SystemExit, match="usage: dora-openarm-standby"):
+        standby.main()
+
+
+@pytest.mark.parametrize(
+    ("selected", "run_when", "message"),
+    [
+        (None, "ker", "SELECTED must not be empty"),
+        (" ", "ker", "SELECTED must not be empty"),
+        ("ker", None, "RUN_WHEN must not be empty"),
+        ("ker", " ", "RUN_WHEN must not be empty"),
+    ],
+)
+def test_reject_empty_env(monkeypatch, selected, run_when, message):
+    for name, value in (("SELECTED", selected), ("RUN_WHEN", run_when)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    monkeypatch.setattr("sys.argv", ["dora-openarm-standby", "dora-openarm-ker"])
+    monkeypatch.setattr("os.execvp", _fake_execvp)
+    with pytest.raises(SystemExit, match=message):
         standby.main()
