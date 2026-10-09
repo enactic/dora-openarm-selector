@@ -33,6 +33,7 @@ Repository = "https://github.com/enactic/dora-openarm-selector"
 
 [project.scripts]
 dora-openarm-selector = "dora_openarm_selector.main:main"
+dora-openarm-standby = "dora_openarm_selector.standby:main"
 
 [dependency-groups]
 dev = [

@@ -151,6 +151,39 @@ TELEOP_SOURCE=webxr dora run example/dataflow-mujoco.yaml
 To use WebXR, open `https://$(hostname).local:8443/` in the Web browser
 on your VR device and press the "Start" button.
 
+## Standby
+
+This package also provides `dora-openarm-standby`. It runs a hardware
+node only when it's selected by an environment variable such as
+`LEADER`. Otherwise, it stands by without opening the device. You can
+use it to put several alternative sources such as KER and WebXR in one
+dataflow that starts even when only one device is plugged in.
+
+```yaml
+- id: ker
+  path: dora-openarm-standby
+  args: dora-openarm-ker            # the real node and its arguments
+  env:
+    SELECTED: "${LEADER:-ker}"      # what the dataflow runs now
+    RUN_WHEN: ker                   # run the real node for these (comma-separated)
+  inputs:
+    tick: quittable-tick-leader/tick
+  outputs:
+    - follower_position_right
+```
+
+| Environment variable | Description                                                        |
+| -------------------- | ------------------------------------------------------------------ |
+| `SELECTED`           | The name that the dataflow runs now such as `ker`.                 |
+| `RUN_WHEN`           | Comma-separated names to run the real node for such as `vr,webxr`. |
+
+- Selected: `SELECTED` is one of `RUN_WHEN`. This node execs the real
+  node in the same process, so it behaves exactly as without this node.
+- Not selected: This node sends no outputs. It keeps reading events and
+  exits when dora-rs stops it or its inputs close, for example because
+  a quitter tick stops on Quit. So a normal Quit still ends the
+  dataflow.
+
 ## License
 
 Licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
