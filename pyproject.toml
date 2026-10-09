@@ -14,7 +14,7 @@
 
 [project]
 name = "dora-openarm-selector"
-version = "0.1.0"
+version = "0.2.0"
 authors = [{ name = "Enactic, Inc." }]
 description = "dora-rs node that forwards messages only from the highest-priority enabled source"
 license = { text = "Apache-2.0" }
@@ -22,7 +22,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 
 dependencies = [
-  "dora-rs >= 0.5.0",
+  "dora-rs >= 1.0.0",
   "pyarrow",
 ]
 
@@ -37,6 +37,7 @@ dora-openarm-standby = "dora_openarm_selector.standby:main"
 
 [dependency-groups]
 dev = [
+  "dora-rs-cli >= 1.0.0",
   "pytest >= 8.1.1",
 ]
 
